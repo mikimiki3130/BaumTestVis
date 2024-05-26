@@ -15,6 +15,11 @@ from umap import UMAP
 import SaveDataFile as SDF
 import GetFeatures as GF
 
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+#=====次元削減==========次元削減==========次元削減==========次元削減==========次元削減=====
+
 # 次元削減
 def dim_reduction(features: np.ndarray, DRType="UMAP"):
     """
@@ -56,7 +61,7 @@ def dim_reduction(features: np.ndarray, DRType="UMAP"):
 
     return reduced_data
 
-# データからクラス分けしてラベリングを行う（値の大きさに意味があるものに限る）
+# データからクラス分けしてラベリングを行う（量的データを想定）
 def _data_labeling(data_params, n_clusters=4):
     percentiles = np.linspace(np.min(data_params), np.max(data_params), n_clusters+1)
     labels = np.zeros_like(data_params, dtype=int)
@@ -121,11 +126,12 @@ from scikit_posthocs import posthoc_dunn
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("dark-blue")
 
+
 # 使用するラベルの番号とラベル
 labels_index = -1
 label_name_list = ["sex", "GHQ", "CP", "NP", "A", "FC", "AC", "L", "P", "AF", "SA", "B", "IP", "AG", "R", "F1", "H", "U", "IF", "S", "H", "F2"] 
 
-# KWバー表示用の、数値データの「正規化」
+# KWバー表示用の、数値データの正規化
 def values_normalize(values_origin):
     min_vals = np.min(values_origin, axis=0)
     max_vals = np.max(values_origin, axis=0)
@@ -250,7 +256,6 @@ if True:
     window_level_2 = None
     window_width_1 = None
     window_width_2 = None
-    wl_threshold = 1 # window_levelの最大値、最小値に余裕を持たせるための閾値
 
 # 散布図の（再）描画
 def update_scatter():
@@ -275,7 +280,7 @@ def update_scatter():
     ax_scatter.xaxis.set_visible(False)
     ax_scatter.yaxis.set_visible(False)
 
-    # マージンの計算
+    # 概観プロットの上下左右のマージンの計算
     margin = 0.1  # マージンの割合
     x_min, x_max = reduced_data[:, 0].min(), reduced_data[:, 0].max()
     y_min, y_max = reduced_data[:, 1].min(), reduced_data[:, 1].max()
@@ -287,7 +292,7 @@ def update_scatter():
     ax_scatter.set_ylim(y_min - y_margin, y_max + y_margin)
 
     # ポリゴン描画
-    default_alpha = 0.15
+    default_alpha = 0.15 # デフォルトの透明度
     for i, poly in enumerate(polygons_list):
         if dunn_pair_list: # ペアがあるなら...
             this_alpha = _det_polygon_alpha(poly_num= i, default_alpha = default_alpha)
@@ -297,7 +302,7 @@ def update_scatter():
         
         # 多角形に番号を表示
         ax_scatter.text(np.mean(poly.get_xy()[:, 0]), np.mean(poly.get_xy()[:, 1]),
-                         str(i),
+                         "C"+str(i+1),
                          horizontalalignment='center', verticalalignment='center', color='blue', fontsize=14)
 
     # 図を再描画
@@ -493,7 +498,7 @@ def update_dunn_chord():
 
         default_color = "gray"
 
-        sectors = {f"No. {i}": 1 for i in range(num_nodes)}
+        sectors = {f"C{i+1}": 1 for i in range(num_nodes)}
         chord = Circos(sectors, space=30)
 
         # 弧描画
@@ -510,8 +515,8 @@ def update_dunn_chord():
             for i, dunn_pair in enumerate(dunn_pair_list):
                 color = _det_chord_linkcolor(dunn_pair, default_color)
                 
-                pair_str1 = f"No. {dunn_pair[0]}"
-                pair_str2 = f"No. {dunn_pair[1]}"
+                pair_str1 = f"C{dunn_pair[0] +1}"
+                pair_str2 = f"C{dunn_pair[1] +1}"
                 link_list.append((color, pair_str1, pair_str2))
 
             # 色が "orangered", "gray", "whitesmoke" の順に並び替え
@@ -676,7 +681,7 @@ def _show_image1(number):
 
     # 画像をMatplotlibのAxesに描画
     ax_image1.clear()
-    ax_image1.set_title(f"Cluster {cluster_index1} Baumtest image")
+    ax_image1.set_title(f"C{cluster_index1 +1} Baumtest image")
     ax_image1.imshow(img_array, cmap="gray")
     ax_image1.set_xticks([])  # x軸の値を無くす
     ax_image1.set_yticks([])  # y軸の値を無くす
@@ -716,7 +721,7 @@ def _show_image2(number):
 
     # 画像をMatplotlibのAxesに描画
     ax_image2.clear()
-    ax_image2.set_title(f"Cluster {cluster_index2} Baumtest image")
+    ax_image2.set_title(f"C{cluster_index2 +1} Baumtest image")
     ax_image2.imshow(img_array, cmap = "gray")
     ax_image2.set_xticks([]) # x軸の値を無くす
     ax_image2.set_yticks([]) # y軸の値を無くす
@@ -755,6 +760,11 @@ def update_image1():
     img_array_windowed = np.where((0 < img_array_windowed) & (img_array_windowed < 255) ,
                                   ((img_array_windowed - window_min) / (window_max - window_min)) * 255,
                                   img_array_windowed)
+
+    # 範囲外の値をクリップ（念のため） 
+    img_array_windowed = np.clip(img_array_windowed, 0, 255)
+
+    # print(f"M:{window_max} m:{window_min}")
 
     # Numpy行列から画像を作成してTkinterで表示
     img = Image.fromarray(np.uint8(img_array_windowed))
@@ -818,7 +828,6 @@ def update_image2():
 # 画像表示1での、マウスドラッグによるWW・WL更新
 def on_mouse_move_image1(event):
     global window_level_1, window_width_1
-    global wl_threshold
 
     if event.button == 1:  # 左ボタンが押されている場合
         # マウスの移動量を取得
@@ -829,8 +838,8 @@ def on_mouse_move_image1(event):
         window_level_1 -= dx
         window_width_1 -= dy
 
-        # 更新後不正な値を取らないよう調整
-        window_level_1 = np.clip(window_level_1, 0+wl_threshold, 255-wl_threshold)
+        # 上限と下限を設定
+        window_level_1 = np.clip(window_level_1, 1, 254)
         if window_level_1 < 255 - window_level_1:
             window_width_1 = np.clip(window_width_1, 255 - window_level_1, window_level_1)
         else:
@@ -845,11 +854,11 @@ def on_mouse_move_image1(event):
     on_mouse_move_image1.prev_y = event.ydata
 on_mouse_move_image1.prev_x = None
 on_mouse_move_image1.prev_y = None
+canvas_image1.mpl_connect('motion_notify_event', on_mouse_move_image1)
 
 # 画像表示2での、マウスドラッグによるWW・WL更新
 def on_mouse_move_image2(event):
     global window_level_2, window_width_2
-    global wl_threshold
 
     if event.button == 1:  # 左ボタンが押されている場合
         # マウスの移動量を取得
@@ -861,7 +870,7 @@ def on_mouse_move_image2(event):
         window_width_2 -= dy
 
         # 更新後不正な値を取らないよう調整
-        window_level_2 = np.clip(window_level_2, 0+wl_threshold, 255-wl_threshold)
+        window_level_2 = np.clip(window_level_2, 1, 254)
         if window_level_2 < 255 - window_level_2:
             window_width_2 = np.clip(window_width_2, 255 - window_level_2, window_level_2)
         else:
@@ -875,8 +884,6 @@ def on_mouse_move_image2(event):
     on_mouse_move_image2.prev_y = event.ydata
 on_mouse_move_image2.prev_x = None
 on_mouse_move_image2.prev_y = None
-
-canvas_image1.mpl_connect('motion_notify_event', on_mouse_move_image1)
 canvas_image2.mpl_connect('motion_notify_event', on_mouse_move_image2)
 
 # 画像から自動的にウィンドウレベル、ウィンドウ幅を計算する関数
@@ -993,7 +1000,7 @@ def _on_polygon_select(vertices):
         if len(polygons_list) >= 2:
             cluster_test()
 
-# 散布図上でクリックが押されたとき
+# 散布図でクリックが押されたとき
 def on_scatter_click(event):
     global PolygonFlag
     global polygon_selector
@@ -1015,13 +1022,11 @@ def on_scatter_click(event):
         if not polygon_selector:
             # PolygonSelectorを作成
             polygon_selector = LassoSelector(ax_scatter, onselect=_on_polygon_select, props={'color': 'blue'})
-
-# クリックイベントに関連付け
 canvas_scatter.mpl_connect('button_press_event', on_scatter_click)
 
 #===スライダー・ボタン======スライダー・ボタン======スライダー・ボタン======スライダー・ボタン===
 
-# 選択クラスタ群のリセット(Rキー)
+# 選択クラスタ群のリセット(Rキーで呼び出し)
 def _reset_clusters():
         global polygons_list
         global indices_list
