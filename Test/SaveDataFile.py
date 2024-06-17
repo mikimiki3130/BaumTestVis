@@ -5,29 +5,38 @@ from PIL import Image
 import pandas as pd
 import cv2
 
-# フォルダから画像を取り込む
-def _get_input_images(folder_path: str):
+# 指定フォルダから画像とファイル名を読み込む
+def _input_image_from_files(folder_path: str, resize_ratio = 0.1):
     
     file_names = []
     image_data = []
 
+    first_image_flag = True
     for file_name in sorted(os.listdir(folder_path)):
         if file_name.endswith('.jpg') or file_name.endswith('.JPG') or file_name.endswith('.jpeg'):
+
             file_path = os.path.join(folder_path, file_name)
             file_names.append(file_name)
 
             img = Image.open(file_path).convert('L')  # グレースケールに変換
-            img_resized = img.resize((248, 350))  # 画像サイズを統一する
+
+            # 最初に読みこんだ画像のアスペクト比を使う
+            if first_image_flag:
+                resize_width = int(img.size[0] * resize_ratio)
+                resize_height = int(img.size[1] * resize_ratio)
+                first_image_flag = False
+            
+            img_resized = img.resize((resize_width, resize_height))  # 画像サイズを統一する（拡大縮小が行われる可能性あり）
             img_array = np.array(img_resized)
             
             image_data.append(img_array)
 
-    image_data = np.array(image_data)  # (n,x,y)の3次元データ（n枚、x*yサイズ画像の場合）
+    image_data = np.array(image_data)  # [n,x,y]の3次元データ（n枚、x*yサイズ画像の場合）
     
     return file_names, image_data
 
 #数値データを読み込む
-def _get_input_values(filename):
+def _input_value_from_files(filename):
     """
     各数値データ
         性別 GHQ CP	NP	A	FC	AC	L	P	AF	SA	B	IP	AG	R	F	H	U	IF	S	H	F
@@ -40,7 +49,7 @@ def _get_input_values(filename):
     # データをnumpy配列に変換
     data = data.astype(float)
 
-    #画像データが無い番号を消去(提供データでは、75番目、129番目が存在しない)
+    #画像データが無い番号を消去(提供データ)
     indices_to_remove = [74, 128]  # 75番目、129番目を消去
     data_np = np.delete(data, indices_to_remove, axis=0)
 
@@ -83,23 +92,20 @@ def _get_labels(filename: str):
     return size_np, point_np, direction_np, withered_np
 
 # データをセーブする
-def save_data():
+def save_data(  this_filename,
+                image_data,
+                file_names,
+                values,
+                label_siz, 
+                label_pt, 
+                label_dir,
+                label_withered):
     """
     各データをdata.npzファイルにセーブする。
     """
 
-    filename = "data.npz"
-
-    # 画像データの取り込み
-    file_names, image_data = _get_input_images(folder_path = '../Data/BaumTestData')
-
-    # 数値データの取り込み
-    values = _get_input_values(filename = "../psydata.csv")
-    
-    label_siz, label_pt, label_dir, label_withered = _get_labels(filename='../Data/SizeVisuallyData.xlsm')
-
     #それぞれのnumpy行列をファイルに保存
-    np.savez(filename,
+    np.savez(this_filename,
                 image_data = image_data,
                 file_names = file_names,
                 values = values,
@@ -177,27 +183,8 @@ def load_certain_data(data_name: str):
 
     return matrixs[data_name]
 
-# データを標準化する
+# データの標準化を行う
 def data_process(image_data, values, BIN=False):
-    """
-    データを標準化する。任意で2値化も可能
-
-    Parameters
-    ------
-    image_data:
-        画像データ（[データ番号, x, y]の3次元データ）
-    values:
-        数値データ
-    BIN:
-        画像データを2値化するかのオプション
-
-    Returns
-    ------
-    image_data:
-        標準化された画像データ（[データ番号, x*y]の2次元データ）
-    values:
-        標準化された数値データ
-    """
     # 2値化
     if BIN:
         _, image_data = cv2.threshold(src=image_data, thresh=250, maxval=255, type=cv2.THRESH_BINARY)
@@ -222,4 +209,21 @@ def data_process(image_data, values, BIN=False):
 
 
 if __name__ == "__main__":
-    save_data() 
+    filename = "data.npz"
+
+    file_names, image_data = _input_image_from_files(folder_path = '../baumtest_data/baumtest_data_word-deleted_2')
+
+    values = _input_value_from_files(filename = "../psydata_3.csv")
+    
+    label_siz, label_pt, label_dir, label_withered = _get_labels(filename='../baumtest_data/サイズ等目視データ.xlsm')
+    
+    
+    save_data(  this_filename= filename,
+                image_data = image_data,
+                file_names = file_names,
+                values = values,
+                label_siz = label_siz, 
+                label_pt = label_pt, 
+                label_dir = label_dir,
+                label_withered = label_withered) 
+    
